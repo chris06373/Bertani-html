@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chronicles of Nusantara - Farming & Village RPG</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen p-4" x-data="gameData()">
+
+    <!-- MODAL PEMILIHAN KARAKTER DI AWAL -->
+    <template x-if="!gameStarted">
+        <div class="fixed inset-0 bg-slate-950/90 z-50 flex items-center justify-center p-4">
+            <div class="bg-slate-800 border border-slate-700 max-w-lg w-full rounded-2xl p-6 shadow-2xl space-y-5">
+                <h2 class="text-xl font-black text-emerald-400 text-center">🌾 Mulai Perjalanan Hidupmu</h2>
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Nama Karaktermu:</label>
+                    <input type="text" x-model="playerName" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-2">Pilih Gender:</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button @click="playerGender = 'Pria'; selectedCandidate = null" :class="playerGender === 'Pria' ? 'bg-emerald-600 border-emerald-400 text-white' : 'bg-slate-900 border-slate-700 text-slate-400'" class="py-2.5 rounded-xl border text-sm font-bold transition">👨 Pria</button>
+                        <button @click="playerGender = 'Wanita'; selectedCandidate = null" :class="playerGender === 'Wanita' ? 'bg-emerald-600 border-emerald-400 text-white' : 'bg-slate-900 border-slate-700 text-slate-400'" class="py-2.5 rounded-xl border text-sm font-bold transition">👩 Wanita</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-2">Pilih Calon Pasangan Idaman (3 Kategori):</label>
+                    <div class="space-y-2">
+                        <template x-for="candidate in getCandidateList()">
+                            <div @click="selectedCandidate = candidate.name" :class="selectedCandidate === candidate.name ? 'border-pink-500 bg-pink-950/30' : 'border-slate-700 bg-slate-900/60'" class="p-3 rounded-xl border cursor-pointer hover:border-pink-400 transition flex justify-between items-center">
+                                <div>
+                                    <div class="font-bold text-sm text-pink-300" x-text="candidate.name"></div>
+                                    <div class="text-xs text-slate-400" x-text="candidate.desc"></div>
+                                </div>
+                                <span class="text-xs font-bold px-2 py-1 rounded bg-slate-800" x-text="selectedCandidate === candidate.name ? '✔ Dipilih' : 'Pilih'"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <button @click="startGame()" :disabled="!playerName || !selectedCandidate" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl font-bold text-sm transition shadow-lg">
+                    Mulai Berpetualang 🚀
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <!-- KONTEN UTAMA GAME -->
+    <div class="max-w-7xl mx-auto p-2 md:p-4" x-show="gameStarted">
+        <!-- HEADER & STATUS UTAMA -->
+        <header class="bg-slate-800 border border-slate-700 rounded-2xl p-5 mb-6 shadow-lg flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-black text-emerald-400 tracking-wide">🌾 Chronicles of Nusantara</h1>
+                <p class="text-xs text-slate-400">Pemain: <span class="text-white font-semibold" x-text="playerName + ' (' + playerGender + ')'"></span> | Desa: <span class="text-white font-semibold" x-text="villageName"></span> (Penduduk: <span class="text-amber-300 font-bold" x-text="population"></span>)</p>
+            </div>
+
+            <!-- Panel Waktu & Musim -->
+            <div class="flex items-center gap-3 bg-slate-900 px-4 py-2 rounded-xl border border-slate-700 text-sm">
+                <div>🗓️ Hari: <span class="font-bold text-amber-400" x-text="day"></span></div>
+                <div class="border-r border-slate-700 h-4"></div>
+                <div>🍂 Musim: <span class="font-bold text-emerald-400 uppercase" x-text="season"></span></div>
+                <div class="border-r border-slate-700 h-4"></div>
+                <div>🏆 Tier: <span class="font-bold text-purple-400" x-text="tier"></span></div>
+            </div>
+
+            <div class="flex gap-2">
+                <button @click="nextDay()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2.5 rounded-xl shadow transition transform active:scale-95 flex items-center gap-2 text-xs">
+                    ⏳ Tidur / Lanjut Hari
+                </button>
+            </div>
+        </header>
+
+        <!-- NOTIFIKASI EVENT / PEROMPAK -->
+        <template x-if="notification">
+            <div class="mb-6 p-4 rounded-xl border flex items-center justify-between" :class="notifType === 'danger' ? 'bg-rose-950/80 border-rose-600 text-rose-200' : 'bg-emerald-950/80 border-emerald-600 text-emerald-200'">
+                <span class="text-sm font-medium" x-text="notification"></span>
+                <button @click="notification = ''" class="text-xs font-bold underline opacity-75 hover:opacity-100">Tutup</button>
+            </div>
+        </template>
+
+        <!-- STATISTIK / RESOURCE BAR -->
+        <div class="grid grid-cols-2 md:grid-cols-8 gap-3 mb-6">
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 text-center">
+                <div class="text-xs text-slate-400">💰 Emas</div>
+                <div class="text-lg font-bold text-amber-400" x-text="gold"></div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 text-center">
+                <div class="text-xs text-slate-400">🌾 Padi</div>
+                <div class="text-lg font-bold text-emerald-400" x-text="padiStock"></div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 text-center">
+                <div class="text-xs text-slate-400">🍎 Buah</div>
+                <div class="text-lg font-bold text-rose-400" x-text="buahStock"></div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 text-center">
+                <div class="text-xs text-slate-400">🥚 Hasil Ternak</div>
+                <div class="text-lg font-bold text-orange-400" x-text="animalProducts"></div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 text-center">
+                <div class="text-xs text-slate-400">👥 Penduduk</div>
+                <div class="text-lg font-bold text-cyan-400" x-text="population"></div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 text-center">
+                <div class="text-xs text-slate-400">👷 Pekerja</div>
+                <div class="text-lg font-bold text-blue-400" x-text="workers"></div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 text-center">
+                <div class="text-xs text-slate-400">🧪 Pupuk</div>
+                <div class="text-lg font-bold text-indigo-400" x-text="fertilizer"></div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 text-center">
+                <div class="text-xs text-slate-400">🤝 Aliansi</div>
+                <div class="text-lg font-bold text-pink-400" x-text="hasAlliance ? 'Aktif' : 'Belum'"></div>
+            </div>
+        </div>
+
+        <!-- MAIN TABS CONTENT -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- KOLOM KIRI & TENGAH -->
+            <div class="lg:col-span-2 space-y-6">
+
+                <!-- 1. KEBUN, SAWAH & PASAR (JUAL HASIL) -->
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-bold text-emerald-400">🌱 Pertanian & Pasar Penjualan</h2>
+                        <button @click="renameFarm()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg text-slate-300" x-text="farmName"></button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                        <!-- Sawah Padi -->
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700 text-center flex flex-col justify-between">
+                            <div>
+                                <h3 class="font-semibold text-sm mb-1">Sawah Padi</h3>
+                                <p class="text-xs mb-3" :class="farmStatus.rice === 'Siap Panen' ? 'text-amber-400 font-bold animate-pulse' : 'text-slate-400'" x-text="farmStatus.rice"></p>
+                            </div>
+                            <button @click="actionFarm('rice')" 
+                                    :class="farmStatus.rice === 'Siap Panen' ? 'bg-amber-600 hover:bg-amber-500' : (farmStatus.rice === 'Kosong' ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-slate-700 text-slate-400 cursor-not-allowed')"
+                                    class="w-full py-2 rounded-xl text-xs font-bold transition"
+                                    x-text="farmStatus.rice === 'Kosong' ? 'Tanam Padi' : (farmStatus.rice === 'Siap Panen' ? 'Panen Padi!' : 'Sedang Tumbuh')">
+                            </button>
+                        </div>
+                        <!-- Kebun Buah -->
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700 text-center flex flex-col justify-between">
+                            <div>
+                                <h3 class="font-semibold text-sm mb-1">Kebun Buah</h3>
+                                <p class="text-xs mb-3" :class="farmStatus.veg === 'Siap Panen' ? 'text-amber-400 font-bold animate-pulse' : 'text-slate-400'" x-text="farmStatus.veg"></p>
+                            </div>
+                            <button @click="actionFarm('veg')" 
+                                    :class="farmStatus.veg === 'Siap Panen' ? 'bg-amber-600 hover:bg-amber-500' : (farmStatus.veg === 'Kosong' ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-slate-700 text-slate-400 cursor-not-allowed')"
+                                    class="w-full py-2 rounded-xl text-xs font-bold transition"
+                                    x-text="farmStatus.veg === 'Kosong' ? 'Tanam Buah' : (farmStatus.veg === 'Siap Panen' ? 'Panen Buah!' : 'Sedang Tumbuh')">
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Panel Jual Hasil Panen & Produk (Sumber Emas Utama) -->
+                    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-700">
+                        <h3 class="font-semibold text-xs text-amber-400 mb-2 uppercase tracking-wide">💰 Pasar Desa (Jual Hasil untuk Dapatkan Emas)</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <button @click="sellItems('padi')" class="bg-slate-800 hover:bg-slate-700 p-2 rounded-lg border border-slate-700 text-left text-xs flex justify-between items-center">
+                                <span>Jual 10 Padi (+15 Emas)</span>
+                                <span class="font-bold text-amber-400">Jual</span>
+                            </button>
+                            <button @click="sellItems('buah')" class="bg-slate-800 hover:bg-slate-700 p-2 rounded-lg border border-slate-700 text-left text-xs flex justify-between items-center">
+                                <span>Jual 10 Buah (+20 Emas)</span>
+                                <span class="font-bold text-amber-400">Jual</span>
+                            </button>
+                            <button @click="sellItems('produk')" class="bg-slate-800 hover:bg-slate-700 p-2 rounded-lg border border-slate-700 text-left text-xs flex justify-between items-center">
+                                <span>Jual 5 Hasil Ternak (+25 Emas)</span>
+                                <span class="font-bold text-amber-400">Jual</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. PETERNAKAN LENGKAP -->
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md">
+                    <h2 class="text-lg font-bold text-orange-400 mb-3">🐄 Hewan Ternak (Sapi, Kambing, Ayam, Bebek)</h2>
+                    <p class="text-xs text-slate-400 mb-4">Setiap hewan menghasilkan produk harian (susu, daging, telur) yang bisa dijual ke pasar untuk mendapatkan emas.</p>
+                    
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700 text-center flex flex-col justify-between">
+                            <div>
+                                <div class="text-sm font-bold">🐄 Sapi</div>
+                                <div class="text-xs text-slate-400 mb-2">Jumlah: <span x-text="livestock.sapi"></span></div>
+                            </div>
+                            <button @click="buyAnimal('sapi', 40)" class="w-full py-1.5 bg-orange-700 hover:bg-orange-600 rounded-lg text-xs font-bold">Beli (40💰)</button>
+                        </div>
+                        <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700 text-center flex flex-col justify-between">
+                            <div>
+                                <div class="text-sm font-bold">🐐 Kambing</div>
+                                <div class="text-xs text-slate-400 mb-2">Jumlah: <span x-text="livestock.kambing"></span></div>
+                            </div>
+                            <button @click="buyAnimal('kambing', 30)" class="w-full py-1.5 bg-orange-700 hover:bg-orange-600 rounded-lg text-xs font-bold">Beli (30💰)</button>
+                        </div>
+                        <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700 text-center flex flex-col justify-between">
+                            <div>
+                                <div class="text-sm font-bold">🐔 Ayam</div>
+                                <div class="text-xs text-slate-400 mb-2">Jumlah: <span x-text="livestock.ayam"></span></div>
+                            </div>
+                            <button @click="buyAnimal('ayam', 15)" class="w-full py-1.5 bg-orange-700 hover:bg-orange-600 rounded-lg text-xs font-bold">Beli (15💰)</button>
+                        </div>
+                        <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700 text-center flex flex-col justify-between">
+                            <div>
+                                <div class="text-sm font-bold">🦆 Bebek</div>
+                                <div class="text-xs text-slate-400 mb-2">Jumlah: <span x-text="livestock.bebek"></span></div>
+                            </div>
+                            <button @click="buyAnimal('bebek', 20)" class="w-full py-1.5 bg-orange-700 hover:bg-orange-600 rounded-lg text-xs font-bold">Beli (20💰)</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. PEMBANGUNAN DESA, ALIANSI, IRIGASI & TAMBANG -->
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md">
+                    <h2 class="text-lg font-bold text-cyan-400 mb-3">🏛️ Pembangunan Desa & Aliansi</h2>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                        <!-- Aliansi Desa -->
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700 flex flex-col justify-between">
+                            <div>
+                                <h3 class="font-semibold text-sm mb-1">Aliansi Kerjasama</h3>
+                                <p class="text-xs text-slate-400 mb-3" x-text="hasAlliance ? 'Aliansi Terbentuk!' : 'Syarat: 100 Emas & 5 Penduduk'"></p>
+                            </div>
+                            <button @click="formAlliance()" :disabled="hasAlliance" class="w-full py-2 bg-pink-700 hover:bg-pink-600 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl text-xs font-bold transition" x-text="hasAlliance ? 'Aliansi Aktif' : 'Bentuk Aliansi'"></button>
+                        </div>
+
+                        <!-- Irigrasi (Butuh Aliansi) -->
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700 flex flex-col justify-between">
+                            <div>
+                                <h3 class="font-semibold text-sm mb-1">Sistem Irigrasi</h3>
+                                <p class="text-xs text-slate-400 mb-3" x-text="hasIrrigation ? 'Irigrasi Aktif (Panen Cepat)' : (hasAlliance ? 'Biaya: 80 Emas' : 'Butuh Aliansi Dulu')"></p>
+                            </div>
+                            <button @click="buildIrrigation()" :disabled="!hasAlliance || hasIrrigation" class="w-full py-2 bg-blue-700 hover:bg-blue-600 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl text-xs font-bold transition" x-text="hasIrrigation ? 'Terbangun' : 'Bangun Irigrasi'"></button>
+                        </div>
+
+                        <!-- Penambangan (Butuh Aliansi) -->
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700 flex flex-col justify-between">
+                            <div>
+                                <h3 class="font-semibold text-sm mb-1">Tambang Desa</h3>
+                                <p class="text-xs text-slate-400 mb-3" x-text="hasMine ? 'Tambang Beroperasi (Emas Otomatis)' : (hasAlliance ? 'Biaya: 120 Emas' : 'Butuh Aliansi Dulu')"></p>
+                            </div>
+                            <button @click="buildMine()" :disabled="!hasAlliance || hasMine" class="w-full py-2 bg-amber-700 hover:bg-amber-600 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl text-xs font-bold transition" x-text="hasMine ? 'Beroperasi' : 'Bangun Tambang'"></button>
+                        </div>
+                    </div>
+
+                    <!-- Kelola Penduduk & Pekerja -->
+                    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-3">
+                        <div>
+                            <div class="font-bold text-sm text-cyan-300">Manajemen Penduduk & Pekerja</div>
+                            <div class="text-xs text-slate-400">Tarik lebih banyak warga ke desa atau kerahkan pekerja untuk bantu produksi.</div>
+                        </div>
+                        <div class="flex gap-2 w-full sm:w-auto">
+                            <button @click="addPopulation()" class="flex-1 sm:flex-none px-4 py-2 bg-cyan-700 hover:bg-cyan-600 rounded-xl text-xs font-bold">Tarik Penduduk (50💰)</button>
+                            <button @click="addWorker()" class="flex-1 sm:flex-none px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded-xl text-xs font-bold">Tambah Pekerja</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- KOLOM KANAN: KELUARGA, TIER, & LOG -->
+            <div class="space-y-6">
+                <!-- Kehidupan & Keluarga -->
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md">
+                    <h3 class="font-bold text-sm text-pink-400 mb-3">❤️ Kehidupan & Keluarga</h3>
+                    <div class="space-y-2 text-xs text-slate-300 mb-3">
+                        <div class="flex justify-between"><span>Pasangan:</span> <span class="font-bold text-white" x-text="spouse ? spouse : 'Belum Nikah (' + selectedCandidate + ')'"></span></div>
+                        <div class="flex justify-between"><span>Anak:</span> <span class="font-bold text-white" x-text="child ? 'Ada' : 'Belum'"></span></div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="marryPartner()" x-show="!spouse" class="flex-1 py-2 bg-pink-700 hover:bg-pink-600 rounded-xl text-xs font-bold">Nikah</button>
+                        <button @click="haveChild()" x-show="spouse && !child" class="flex-1 py-2 bg-pink-600 hover:bg-pink-500 rounded-xl text-xs font-bold">Punya Anak</button>
+                    </div>
+                </div>
+
+                <!-- Info Tier -->
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md">
+                    <h3 class="font-bold text-sm text-purple-400 mb-3">🎖️ Jenjang Karier</h3>
+                    <div class="space-y-2 text-xs text-slate-300">
+                        <div class="flex justify-between"><span>Total Poin:</span> <span class="font-bold text-white" x-text="points"></span></div>
+                        <div class="flex justify-between"><span>Tier Saat Ini:</span> <span class="font-bold text-purple-300" x-text="tier"></span></div>
+                    </div>
+                </div>
+
+                <!-- Log Aktivitas -->
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md flex flex-col h-64">
+                    <h3 class="font-bold text-sm text-slate-300 mb-3">📜 Riwayat Aktivitas</h3>
+                    <div class="flex-1 overflow-y-auto space-y-2 text-xs text-slate-400 pr-2 border border-slate-900 bg-slate-900/40 p-3 rounded-xl">
+                        <template x-for="log in logs">
+                            <div class="border-b border-slate-800 pb-1" x-text="log"></div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- SCRIPT LOGIC GAME -->
+    <script>
+        function gameData() {
+            return {
+                gameStarted: false,
+                playerName: '',
+                playerGender: 'Pria',
+                selectedCandidate: null,
+                
+                day: 1,
+                season: 'Semi',
+                seasons: ['Semi', 'Panas', 'Gugur', 'Dingin'],
+                gold: 100, // Emas awal pas-pasan
+                padiStock: 10,
+                buahStock: 10,
+                animalProducts: 5,
+                fertilizer: 3,
+                
+                population: 3,
+                workers: 1,
+                
+                livestock: {
+                    sapi: 1,
+                    kambing: 1,
+                    ayam: 2,
+                    bebek: 2
+                },
+                
+                hasAlliance: false,
+                hasIrrigation: false,
+                hasMine: false,
+                
+                combatSkill: 1,
+                points: 0,
+                tier: 'Petani Pemula',
+                farmName: 'Kebun Makmur',
+                villageName: 'Desa Nusantara',
+                spouse: null,
+                child: false,
+                
+                notification: '',
+                notifType: 'success',
+                logs: [],
+                
+                farmStatus: {
+                    rice: 'Kosong',
+                    veg: 'Kosong'
+                },
+
+                getCandidateList() {
+                    if (this.playerGender === 'Pria') {
+                        return [
+                            { name: 'Siti', desc: 'Gadis Desa terampil memasak dan bertani.' },
+                            { name: 'Rinjani', desc: 'Putri Pedagang yang cerdas dalam urusan emas.' },
+                            { name: 'Dewi', desc: 'Pejuang Wanita yang tangguh dalam bela diri.' }
+                        ];
+                    } else {
+                        return [
+                            { name: 'Budi', desc: 'Pemuda Kreatif ahli infrastruktur.' },
+                            { name: 'Joko', desc: 'Petani Teladan rajin mengurus sawah.' },
+                            { name: 'Arya', desc: 'Kesatria Desa gagah berani.' }
+                        ];
+                    }
+                },
+
+                startGame() {
+                    if(!this.playerName || !this.selectedCandidate) return;
+                    this.gameStarted = true;
+                    this.addLog(`Selamat datang, ${this.playerName}. Memulai kehidupan mandiri di desa.`);
+                },
+
+                addLog(msg) {
+                    this.logs.unshift(`H${this.day}: ${msg}`);
+                    if(this.logs.length > 25) this.logs.pop();
+                },
+
+                nextDay() {
+                    this.day++;
+                    let seasonIndex = Math.floor((this.day / 10) % 4);
+                    this.season = this.seasons[seasonIndex];
+
+                    if(this.season === 'Dingin' && Math.random() < 0.3) {
+                        this.gold = Math.max(0, this.gold - 10);
+                        this.addLog('Musim dingin ekstrim! Biaya penghangat keluar.');
+                    }
+
+                    // Progress Sawah & Kebun (jika ada irigrasi lebih cepat/otomatis)
+                    let growSpeed = this.hasIrrigation ? 1 : 1; 
+                    if(this.farmStatus.rice === 'Ditanam') this.farmStatus.rice = 'Siap Panen';
+                    if(this.farmStatus.veg === 'Ditanam') this.farmStatus.veg = 'Siap Panen';
+
+                    // Hasil Produk Ternak Harian berdasarkan jumlah hewan + pekerja
+                    let totalAnimals = this.livestock.sapi + this.livestock.kambing + this.livestock.ayam + this.livestock.bebek;
+                    let produced = Math.floor(totalAnimals * (1 + (this.workers * 0.2)));
+                    this.animalProducts += produced;
+                    this.addLog(`Ternak menghasilkan ${produced} produk ikutan.`);
+
+                    // Jika ada tambang aktif, hasilkan emas otomatis harian
+                    if(this.hasMine) {
+                        let mineGold = 5 + (this.workers * 2);
+                        this.gold += mineGold;
+                        this.addLog(`Tambang desa menghasilkan ${mineGold} emas.`);
+                    }
+
+                    this.checkTier();
+                },
+
+                actionFarm(type) {
+                    if(this.farmStatus[type] === 'Kosong') {
+                        this.farmStatus[type] = 'Ditanam';
+                        this.points += 5;
+                        this.addLog(`Menanam ${type === 'rice' ? 'Padi' : 'Buah'}.`);
+                    } else if(this.farmStatus[type] === 'Siap Panen') {
+                        let yieldAmount = this.season === 'Panas' ? 35 : 20;
+                        if(this.hasIrrigation) yieldAmount += 15;
+                        if(this.fertilizer > 0) {
+                            yieldAmount += 10;
+                            this.fertilizer--;
+                        }
+
+                        if(type === 'rice') this.padiStock += yieldAmount;
+                        else this.buahStock += yieldAmount;
+
+                        this.farmStatus[type] = 'Kosong';
+                        this.points += 15;
+                        this.addLog(`Panen ${type === 'rice' ? 'Padi' : 'Buah'} berhasil (+${yieldAmount}).`);
+                    }
+                },
+
+                sellItems(itemType) {
+                    if(itemType === 'padi') {
+                        if(this.padiStock >= 10) {
+                            this.padiStock -= 10;
+                            this.gold += 15;
+                            this.points += 5;
+                            this.addLog('Menjual 10 Padi seharga 15 Emas.');
+                        } else { alert('Stok Padi kurang dari 10!'); }
+                    } else if(itemType === 'buah') {
+                        if(this.buahStock >= 10) {
+                            this.buahStock -= 10;
+                            this.gold += 20;
+                            this.points += 5;
+                            this.addLog('Menjual 10 Buah seharga 20 Emas.');
+                        } else { alert('Stok Buah kurang dari 10!'); }
+                    } else if(itemType === 'produk') {
+                        if(this.animalProducts >= 5) {
+                            this.animalProducts -= 5;
+                            this.gold += 25;
+                            this.points += 5;
+                            this.addLog('Menjual 5 Hasil Ternak seharga 25 Emas.');
+                        } else { alert('Stok Hasil Ternak kurang dari 5!'); }
+                    }
+                },
+
+                buyAnimal(type, price) {
+                    if(this.gold >= price) {
+                        this.gold -= price;
+                        this.livestock[type]++;
+                        this.points += 8;
+                        this.addLog(`Membeli 1 ${type}.`);
+                    } else {
+                        alert('Emas tidak cukup! Jual hasil panen/ternak terlebih dahulu di Pasar.');
+                    }
+                },
+
+                formAlliance() {
+                    if(this.gold >= 100 && this.population >= 5) {
+                        this.gold -= 100;
+                        this.hasAlliance = true;
+                        this.points += 50;
+                        this.addLog('Berhasil membentuk Aliansi Kerjasama Desa!');
+                    } else {
+                        alert('Butuh minimal 100 Emas dan 5 Penduduk!');
+                    }
+                },
+
+                buildIrrigation() {
+                    if(this.gold >= 80) {
+                        this.gold -= 80;
+                        this.hasIrrigation = true;
+                        this.points += 40;
+                        this.addLog('Sistem Irigrasi berhasil dibangun.');
+                    } else { alert('Emas tidak cukup!'); }
+                },
+
+                buildMine() {
+                    if(this.gold >= 120) {
+                        this.gold -= 120;
+                        this.hasMine = true;
+                        this.points += 60;
+                        this.addLog('Tambang desa mulai beroperasi.');
+                    } else { alert('Emas tidak cukup!'); }
+                },
+
+                addPopulation() {
+                    if(this.gold >= 50) {
+                        this.gold -= 50;
+                        this.population++;
+                        this.points += 15;
+                        this.addLog('Penduduk baru bergabung ke desa.');
+                    } else { alert('Butuh 50 Emas untuk menarik penduduk.'); }
+                },
+
+                addWorker() {
+                    if(this.population > this.workers) {
+                        this.workers++;
+                        this.points += 10;
+                        this.addLog('1 Penduduk dialihfungsikan menjadi Pekerja produktif.');
+                    } else {
+                        alert('Penduduk tidak cukup! Tambah penduduk desa terlebih dahulu.');
+                    }
+                },
+
+                marryPartner() {
+                    if(!this.spouse && this.selectedCandidate) {
+                        this.spouse = this.selectedCandidate;
+                        this.points += 40;
+                        this.addLog(`Resmi menikah dengan ${this.spouse}!`);
+                    }
+                },
+
+                haveChild() {
+                    if(this.spouse && !this.child) {
+                        this.child = true;
+                        this.population++;
+                        this.points += 50;
+                        this.addLog('Dianuniai seorang anak (penduduk desa bertambah).');
+                    }
+                },
+
+                renameFarm() {
+                    let name = prompt('Masukkan nama baru untuk kebun Anda:', this.farmName);
+                    if(name) this.farmName = name;
+                },
+
+                checkTier() {
+                    if(this.points < 50) this.tier = 'Petani Pemula';
+                    else if(this.points < 150) this.tier = 'Petani Sukses';
+                    else if(this.points < 300) this.tier = 'Tokoh Desa & Aliansi';
+                    else this.tier = 'Penguasa Legendaris Nusantara';
+                }
+            }
+        }
+    </script>
+</body>
+</html>
